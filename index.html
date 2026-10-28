@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quick class survey</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font:17px/1.4 -apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#fff;color:#111;-webkit-text-size-adjust:100%}
+  .wrap{max-width:480px;margin:0 auto;padding:16px}
+  h1{font-size:22px;margin:4px 0 18px}
+  .q{margin:0 0 26px}
+  .q p{margin:0 0 10px;font-weight:600}
+  html,body{overflow-x:hidden}
+  .row11{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:3px;width:100%}
+  .box{min-width:0;width:100%;height:48px;padding:0;border:1.5px solid #888;border-radius:5px;background:#fff;color:#111;font-weight:600;font-size:clamp(10px,3.4vw,14px);font-family:inherit;touch-action:manipulation}
+  .box.on,.opt.on{background:#1a5fd0;border-color:#1a5fd0;color:#fff}
+  .ends{display:flex;justify-content:space-between;gap:8px;font-size:13px;color:#444;margin-top:6px;white-space:nowrap}
+  .opt{display:block;width:100%;min-height:48px;margin:0 0 8px;padding:10px 14px;text-align:left;border:1.5px solid #888;border-radius:8px;background:#fff;color:#111;font:inherit;touch-action:manipulation}
+  #send{display:block;width:100%;min-height:52px;border:0;border-radius:8px;background:#111;color:#fff;font-weight:600;font-size:18px;font-family:inherit}
+  #send:disabled{opacity:.45}
+  #msg{margin:12px 0 0;min-height:22px;color:#b00020;font-weight:600}
+  .center{text-align:center;padding-top:60px;font-size:20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Quick class survey</h1>
+  <div id="form" style="display:none">
+    <div class="q"><p>1. How well do you feel you have handled your classes so far?</p>
+      <div class="row11" id="q1"></div>
+      <div class="ends"><span>not at all well</span><span>extremely well</span></div></div>
+    <div class="q"><p>2. On a normal day, how many hours do you spend on your phone?</p><div id="q2"></div></div>
+    <div class="q"><p>3. Recorded lectures are better than live lectures.</p><div id="q3"></div></div>
+    <button id="send">Submit</button>
+    <div id="msg" role="status"></div>
+  </div>
+  <div id="done" class="center" style="display:none">Thanks! You're done. Please put your phone down.</div>
+</div>
+<script>
+var EXEC_URL = 'https://script.google.com/macros/s/AKfycbyYAoKFmgvTTYu1dO0Q4uBahGjtIEV5I_3hTU8Csl8eIhzw9GABRyGVQDWO0ajN4Q/exec';
+var OPTIONS = {"A":{"q1":["0","1","2","3","4","5","6","7","8","9","10"],"q2":["Up to 1 hour","1–2 hours","2–3 hours","3–4 hours","More than 4 hours"],"q3":["Strongly disagree","Disagree","Neutral","Agree","Strongly agree"]},"B":{"q1":["−5","−4","−3","−2","−1","0","+1","+2","+3","+4","+5"],"q2":["Up to 4 hours","4–5 hours","5–6 hours","6–7 hours","More than 7 hours"],"q3":["Strongly disagree","Disagree","Agree","Strongly agree"]}};
+var LS_KEY = 'qcs1';
+var st = { pid: null, version: null, a: { q1: null, q2: null, q3: null }, sending: false, lsOk: false };
+
+function $(id) { return document.getElementById(id); }
+function show(id) { ['form', 'done'].forEach(function (x) { $(x).style.display = (x === id ? 'block' : 'none'); }); }
+function lsGet() { try { var v = JSON.parse(localStorage.getItem(LS_KEY) || 'null'); return v && /^p[0-9a-f]{12}$/.test(v.pid) && (v.version === 'A' || v.version === 'B') ? v : null; } catch (e) { return null; } }
+function lsSave() { try { localStorage.setItem(LS_KEY, JSON.stringify({ pid: st.pid, version: st.version, done: !!st.done })); } catch (e) {} writeHash(); }
+function lsTest() { try { localStorage.setItem('qcs_t', '1'); var ok = localStorage.getItem('qcs_t') === '1'; localStorage.removeItem('qcs_t'); return ok; } catch (e) { return false; } }
+function writeHash() { try { history.replaceState(null, '', '#p=' + st.pid + '&v=' + st.version + (st.done ? '&d=1' : '')); } catch (e) { try { location.hash = 'p=' + st.pid + '&v=' + st.version + (st.done ? '&d=1' : ''); } catch (e2) {} } }
+function hashGet() {
+  var m = /p=(p[0-9a-f]{12})&v=([AB])(&d=1)?/.exec(location.hash || '');
+  return m ? { pid: m[1], version: m[2], done: !!m[3] } : null;
+}
+function newId() {
+  var b = new Uint8Array(7);
+  try { crypto.getRandomValues(b); } catch (e) { for (var i = 0; i < 7; i++) b[i] = Math.floor(Math.random() * 256); }
+  var hex = '';
+  for (var j = 0; j < 6; j++) hex += ('0' + b[j].toString(16)).slice(-2);
+  return { pid: 'p' + hex, version: (b[6] & 1) ? 'B' : 'A' };   // 6 bytes = 12 hex chars; fair coin flip
+}
+function post(obj) {
+  return fetch(EXEC_URL, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(obj) });
+}
+
+function start() {
+  st.lsOk = lsTest();
+  var known = lsGet() || hashGet();
+  var fresh = !known;
+  if (!known) known = newId();
+  st.pid = known.pid; st.version = known.version; st.done = !!known.done;
+  lsSave();
+  if (fresh) { try { post({ type: 'open', pid: st.pid, version: st.version }).catch(function () {}); } catch (e) {} }
+  if (st.done) show('done'); else render();
+}
+
+function choose(q, i, group) {
+  st.a[q] = i;
+  var kids = group.children;
+  for (var k = 0; k < kids.length; k++) kids[k].className = kids[k].className.replace(' on', '') + (k === i ? ' on' : '');
+  $('msg').textContent = '';
+}
+
+function build(q, cls) {
+  var el = $(q); el.innerHTML = '';
+  OPTIONS[st.version][q].forEach(function (label, i) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = cls; b.textContent = label;
+    b.onclick = function () { choose(q, i, el); };
+    el.appendChild(b);
+  });
+}
+
+function render() {
+  st.a = { q1: null, q2: null, q3: null };
+  build('q1', 'box'); build('q2', 'opt'); build('q3', 'opt');
+  $('send').disabled = false; $('msg').textContent = '';
+  show('form');
+}
+
+$('send').onclick = function () {
+  if (st.sending) return;
+  if (st.a.q1 === null || st.a.q2 === null || st.a.q3 === null) { $('msg').textContent = 'Please answer all three questions.'; return; }
+  st.sending = true; $('send').disabled = true; $('send').textContent = 'Sending…'; $('msg').textContent = '';
+  var again = function () { st.sending = false; $('send').disabled = false; $('send').textContent = 'Submit'; };
+  var fail = function () { again(); $('msg').textContent = "Didn't send, tap Submit again"; };
+  var p;
+  try { p = post({ type: 'submit', pid: st.pid, version: st.version, answers: { q1: st.a.q1, q2: st.a.q2, q3: st.a.q3 }, lsOk: st.lsOk }); } catch (e) { fail(); return; }
+  p.then(function () { st.done = true; lsSave(); show('done'); }, fail);
+};
+start();
+</script>
+</body>
+</html>
